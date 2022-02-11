@@ -1,0 +1,174 @@
+using Unity.Assertions;
+using Unity.Collections;
+using Unity.Collections.LowLevel.Unsafe;
+
+namespace NSS.Data
+{
+
+    /// <summary>
+    /// - represents an object as a list of integers that are stored from first_index until first_index + num_fields
+    /// 
+    /// - a constant index list -> indices dont change on removal of items, the free items
+    /// are reused on later inserts, they are linked together as a linked list starting at 
+    /// free_element
+    /// 
+    /// - can optionally use stack from caller and expand into heap if needed
+    /// 
+    /// </summary>
+    [BurstCompatible]
+    public unsafe struct ConstantIndexIntList
+    {
+        const int initial_capacity = 128;
+
+        // data pointer, may point to heap
+        private int* data;
+
+        // Stores how many integer fields each element has.
+        private int num_fields;
+
+        // Stores the number of elements in the list.
+        private int num;
+
+        // Stores the capacity of the array.
+        private int cap;
+
+        // Stores an index to the free element or -1 if the free list
+        // is empty.
+        private int free_element;
+
+        private Allocator data_allocator;
+        
+        public int Size => num;
+
+        /// <summary>
+        /// capacity in number of object == internal array capacity / num_fields 
+        /// </summary>
+        public int Capacity => cap / num_fields;
+
+        public bool IsAllocated => data != null && !on_stack;
+        private bool on_stack;
+
+
+        static public ConstantIndexIntList Create(int numfields, Allocator allocator = Allocator.Temp)
+        {
+            return Create(numfields, allocator, null, 0); 
+        }
+
+        static public ConstantIndexIntList Create(int numfields, Allocator allocator = Allocator.Temp, int* stack_ptr = null, int stack_size = 0)
+        {
+            ConstantIndexIntList l = default(ConstantIndexIntList);
+            l.data_allocator = allocator;
+            l.num = 0;
+            l.cap = stack_ptr == null ? initial_capacity : stack_size;
+            l.num_fields = numfields;
+            l.free_element = -1;
+            l.on_stack = stack_ptr != null;
+            l.data =
+                stack_ptr == null
+                ?
+                (int*)UnsafeUtility.Malloc(initial_capacity * sizeof(int), 4, allocator)
+                :
+                stack_ptr; 
+            return l; 
+        }
+
+        public void Destroy()
+        {
+            if (IsAllocated)
+            {
+                UnsafeUtility.Free(data, data_allocator);
+            }
+        }
+
+        public void Clear()
+        {
+            num = 0;
+            free_element = -1;
+        }
+
+        public int Get(int n, int field)
+        {
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+            Assert.IsTrue(n >= 0 && n < num);
+#endif 
+            return data[n * num_fields + field];
+        }
+
+        public void Set(int n, int field, int val)
+        {
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+            Assert.IsTrue(n >= 0 && n < num);
+#endif
+            data[n * num_fields + field] = val;
+        }
+
+        public int PushBack()
+        {
+            int new_pos = (num + 1) * num_fields;
+
+            if (new_pos > cap)
+            {
+                int new_cap = cap * 2;
+
+                if (on_stack)
+                {
+                    // allocate from heap and copy segment from stack to it
+                    int* new_data = (int*)UnsafeUtility.Malloc(new_cap * sizeof(int), 4, data_allocator);
+                    UnsafeUtility.MemCpy(new_data, data, cap * sizeof(int));
+                    data = new_data;
+                    // not on stack anymore
+                    on_stack = false;
+                }
+                else
+                {
+                    // reallocate the heap buffer to the new size.
+                    int* new_data = (int*)UnsafeUtility.Malloc(new_cap * sizeof(int), 4, data_allocator);
+                    UnsafeUtility.MemCpy(new_data, data, cap * sizeof(int));
+                    UnsafeUtility.Free(data, data_allocator);
+                    data = new_data;
+                }
+                // Set the old capacity to the new capacity.
+                cap = new_cap;
+            }
+
+            int old = num;
+            num++;
+            return old;
+        }
+
+        public void PopBack()
+        {
+            // Just decrement the list size.
+            Assert.IsTrue(num > 0);
+            num = num - 1;
+        }
+
+        public int Insert()
+        {
+            // If there's a free index in the free list, pop that and use it.
+            if (free_element != -1)
+            {
+                int index = free_element;
+                int pos = index * num_fields;
+
+                // Set the free index to the next free index.
+                free_element = data[pos];
+
+                // Return the free index.
+                return index;
+            }
+
+            // Otherwise insert to the back of the array.
+            return PushBack();
+        }
+
+        public void Erase(int n)
+        {
+            // Push the element to the free list.
+            int pos = n * num_fields;
+            data[pos] = free_element;
+            free_element = n;
+            // note: we never decrease the size of data but instead leave a linked list of open elements
+        }
+    }
+}
