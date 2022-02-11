@@ -21,3 +21,7 @@ A fast freelist with constant indexes while removing and/or adding items. Can be
     list.Destroy();
 
 ```
+
+### Threadsafe Bit Set
+
+Set a bit in a map from multiple threads ensuring threadsafety using interlocked ops. 
