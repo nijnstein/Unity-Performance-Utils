@@ -1,0 +1,103 @@
+using System.Runtime.CompilerServices;
+using System.Threading;
+using Unity.Assertions;
+using Unity.Burst;
+using Unity.Collections;
+
+namespace NSS.Data
+{
+    public static class ThreadSafeBit
+    {
+        /// <summary>
+        /// check if the nth bit is set
+        /// </summary>
+        /// <param name="temp">some memory</param>
+        /// <param name="index">zero based index in bits</param>
+        /// <returns></returns>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [BurstCompile]
+        unsafe public static bool IsSet(byte data, byte index)
+        {
+            byte mask = (byte)(1 << (byte)index);
+            return (data & mask) == mask;
+        }
+
+        /// <summary>
+        /// check if a bit is set
+        /// </summary>
+        /// <param name="data"></param>
+        /// <param name="index">zero based bit index</param>
+        /// <returns></returns>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [BurstCompile]
+        unsafe public static bool IsSet(uint data, byte index)
+        {
+            uint mask = (uint)(1 << index);
+            return (data & mask) == mask;
+        }
+
+
+        /// <summary>
+        /// threadsafe set-bit 
+        /// </summary>
+        /// <param name="bit"></param>
+        /// <param name="bitmap"></param>
+        [BurstCompatible]
+        unsafe static public void SetBitSafe(int bit_index, int* bitmap)
+        {
+            int index = bit_index >> 5;
+            int bit = 1 << (bit_index & 31);
+
+            int i = 0;
+
+            do
+            {
+                int current = bitmap[index];
+
+                // check if set 
+                if ((current & bit) == bit) return;
+
+                int next = current | bit;
+
+                int value = Interlocked.CompareExchange(ref bitmap[index], next, current);
+                if (value == current)
+                {
+                    // value set, it didnt change meanwhile 
+                    return;
+                }
+
+                // value was changed while trying to set it, restart procedure 
+                Assert.IsTrue(i++ < 100);
+            }
+            while (true);
+        }
+
+
+
+        /// <summary>
+        /// set nth bit of memory to value
+        /// </summary>
+        /// <param name="temp">some memory</param>
+        /// <param name="index">index in bits</param>
+        /// <param name="value"></param>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [BurstCompile]
+        unsafe public static void SetBitUnsafe(ref byte data, byte index, bool value)
+        {
+            byte mask = (byte)(1 << (byte)index);
+            data = value ? (byte)(data | mask) : (byte)(data & ~mask);
+        }
+
+
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [BurstCompile]
+        unsafe public static void SetBitUnsafe(ref uint data, byte index, bool value)
+        {
+            uint mask = (uint)(1 << index);
+            data = value ? (uint)(data | mask) : (uint)(data & ~mask);
+        }
+
+                                  
+    }
+}
