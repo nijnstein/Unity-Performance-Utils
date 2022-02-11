@@ -1,0 +1,112 @@
+using Unity.Burst;
+using Unity.Collections;
+using Unity.Mathematics;
+
+
+namespace NSS.Data
+{
+
+    [BurstCompile]
+    public struct NativeMinHeap
+    {
+        NativeList<int2> items;
+
+        public NativeMinHeap(NativeList<int2> _items)
+        {
+            items = _items;
+
+            for (var start = (items.Length - 1) / 2; start >= 0; start--)
+            {
+                MinHeapifyDown(start);
+            }
+        }
+
+        public int Count() { return items.IsCreated ? items.Length : 0; }
+        public bool IsEmpty() { return items.IsEmpty; }
+        public void Clear() { if (items.IsCreated) items.Clear(); }
+
+        public void Enqueue(int key, int value)
+        {
+            Enqueue(new int2(key, value));
+        }
+
+        public void Enqueue(int2 item)
+        {
+            items.Add(item);
+
+            var child = items.Length - 1;
+            var parent = (child - 1) / 2;
+
+            while (child > 0 && items[parent].y > items[child].y) // compares only on value? 
+            {
+                var heap = items[parent]; items[parent] = items[child]; items[child] = heap;
+                child = parent;
+                parent = (child - 1) / 2;
+            }
+        }
+
+        /// <inheritdoc/>
+        public bool TryDequeue(out int2 result)
+        {
+            if (items.IsEmpty)
+            {
+                result = default;
+                return false;
+            }
+
+            result = items[0];
+
+            // Remove the first item if neighbour will only be 0 or 1 items left after doing so.  
+            if (items.Length <= 2)
+            {
+                items.RemoveAt(0);
+            }
+            else
+            {
+                // Remove the first item and move the last item to the front.
+                items[0] = items[items.Length - 1];
+                items.RemoveAt(items.Length - 1);
+
+                MinHeapifyDown(0);
+            }
+            return true;
+        }
+
+        public bool TryPeek(out int2 result)
+        {
+            if (items.Length == 0)
+            {
+                result = default;
+                return false;
+            }
+
+            result = items[0];
+            return true;
+        }
+
+
+        /// <summary>sift down from last parent in heap.</summary>
+        private void MinHeapifyDown(int current)
+        {
+            int l;
+            while ((l = 2 * current + 1) < items.Length)
+            {
+                // identify smallest of parent and both children
+                var min = items[l].y < items[current].y ? l : current;
+                var r = l + 1;
+                if (r < items.Length && items[r].y < items[min].y) min = r;
+
+                // if nothing to swap, ... then the tree is a heap
+                if (current == min) break;
+
+                // swap smallest value up
+                int2 tempValue = items[current];
+                items[current] = items[min];
+                items[min] = tempValue;
+
+                // follow swapped value down and repeat until the tree is a heap
+                current = min;
+            }
+        }
+    }
+}
