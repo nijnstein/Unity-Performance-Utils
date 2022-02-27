@@ -25,3 +25,8 @@ A fast freelist with constant indexes while removing and/or adding items. Can be
 ### Threadsafe Bit Set
 
 Set a bit in a map from multiple threads ensuring threadsafety using interlocked ops. 
+
+
+### Implementation of a quadtree
+
+Partition regions on the xz plane efficiently, uses integers only. Data in native memory and search/find burstable.
